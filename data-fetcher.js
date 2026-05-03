@@ -1,214 +1,372 @@
-// Google Sheets published CSV URLs
+// ─── Sheet URLs ───────────────────────────────────────────────────────────────
 const SHEET_URLS = {
-  salaries:  'https://docs.google.com/spreadsheets/d/e/2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ/pub?gid=1002409884&single=true&output=csv',
-  expenses:  'https://docs.google.com/spreadsheets/d/e/2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ/pub?gid=701838879&single=true&output=csv',
-  cashInn:   'https://docs.google.com/spreadsheets/d/e/2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ/pub?gid=1879112264&single=true&output=csv',
-  revenue:   'https://docs.google.com/spreadsheets/d/e/2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ/pub?gid=527351239&single=true&output=csv',
-  pnl:       'https://docs.google.com/spreadsheets/d/e/2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ/pub?gid=62657854&single=true&output=csv'
+  salaries: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ/pub?gid=1002409884&single=true&output=csv',
+  expenses: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ/pub?gid=701838879&single=true&output=csv',
+  cashInn:  'https://docs.google.com/spreadsheets/d/e/2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ/pub?gid=1879112264&single=true&output=csv',
+  revenue:  'https://docs.google.com/spreadsheets/d/e/2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ/pub?gid=527351239&single=true&output=csv',
+  pnl:      'https://docs.google.com/spreadsheets/d/e/2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ/pub?gid=62657854&single=true&output=csv'
 };
 
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const _cache = {};
+// ─── Cache ────────────────────────────────────────────────────────────────────
+const CACHE_TTL = 5 * 60 * 1000;
+const _cache    = {};
+
+function invalidateCacheAll() {
+  Object.keys(_cache).forEach(k => delete _cache[k]);
+}
+
+// ─── Robust CSV parser (no external dependency required) ──────────────────────
+function parseCSV(text) {
+  const rows = [];
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const cells = [];
+    let cur = '', inQuote = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQuote = !inQuote;
+      } else if (ch === ',' && !inQuote) {
+        cells.push(cur.trim()); cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    cells.push(cur.trim());
+    rows.push(cells);
+  }
+  return rows;
+}
 
 async function fetchCSV(url) {
   const now = Date.now();
-  if (_cache[url] && now - _cache[url].ts < CACHE_TTL) {
-    return _cache[url].data;
-  }
+  if (_cache[url] && now - _cache[url].ts < CACHE_TTL) return _cache[url].data;
+
   const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const text = await resp.text();
-  const result = Papa.parse(text, { header: false, skipEmptyLines: true });
-  _cache[url] = { ts: now, data: result.data };
-  return result.data;
+
+  // Use PapaParse if available, fall back to custom parser
+  let rows;
+  if (typeof Papa !== 'undefined') {
+    rows = Papa.parse(text, { skipEmptyLines: true }).data;
+  } else {
+    rows = parseCSV(text);
+  }
+
+  _cache[url] = { ts: now, data: rows };
+  console.log(`[FlexoDash] Loaded ${rows.length} rows from ${url.slice(-20)}`);
+  console.log(`[FlexoDash] Headers:`, rows[0]);
+  if (rows.length > 1) console.log(`[FlexoDash] Row 1 sample:`, rows[1]);
+  if (rows.length > 2) console.log(`[FlexoDash] Row 2 sample:`, rows[2]);
+  return rows;
 }
 
-function findColIndex(headers, ...candidates) {
+// ─── Number parsing ──────────────────────────────────────────────────────────
+// Strips Rs, PKR, $, commas, spaces; handles (negative) parentheses
+function num(val) {
+  if (val === null || val === undefined) return 0;
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  let s = String(val).trim();
+  const negative = s.startsWith('(') && s.endsWith(')');
+  s = s.replace(/\(|\)/g, '')                // remove parens
+        .replace(/Rs\.?/gi, '')              // Rs or Rs.
+        .replace(/PKR/gi, '')               // PKR
+        .replace(/\$/g, '')                 // $
+        .replace(/,/g, '')                  // thousands commas
+        .replace(/\s/g, '')                 // spaces
+        .trim();
+  const n = parseFloat(s);
+  if (isNaN(n)) return 0;
+  return negative ? -n : n;
+}
+
+// ─── Column finder ────────────────────────────────────────────────────────────
+// Returns first column index whose header includes any candidate (case-insensitive)
+// Falls back to `fallback` if none found
+function colIdx(headers, fallback, ...candidates) {
   const lower = headers.map(h => String(h).toLowerCase().trim());
   for (const c of candidates) {
-    const idx = lower.findIndex(h => h.includes(c.toLowerCase()));
-    if (idx !== -1) return idx;
+    const i = lower.findIndex(h => h.includes(c.toLowerCase()));
+    if (i !== -1) return i;
   }
-  return -1;
+  return fallback;
 }
 
-// Returns found index or fallback default index
-function col(headers, defaultIdx, ...candidates) {
-  const found = findColIndex(headers, ...candidates);
-  return found >= 0 ? found : defaultIdx;
+// ─── Month key utilities ──────────────────────────────────────────────────────
+const MONTH_NAMES = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// Returns "YYYY-MM" or the original string if unparseable
+function toMonthKey(raw) {
+  if (!raw) return '';
+  const s = String(raw).trim();
+
+  // Already "YYYY-MM"
+  if (/^\d{4}-\d{2}$/.test(s)) return s;
+
+  // "YYYY-MM-DD" or "YYYY/MM/DD"
+  const ymd = s.match(/^(\d{4})[-/](\d{1,2})[-/]\d{1,2}$/);
+  if (ymd) return `${ymd[1]}-${ymd[2].padStart(2,'0')}`;
+
+  // "DD-MM-YYYY" or "DD/MM/YYYY"
+  const dmy = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2,'0')}`;
+
+  // "MM/YYYY" or "MM-YYYY"
+  const my = s.match(/^(\d{1,2})[-/](\d{4})$/);
+  if (my) return `${my[2]}-${my[1].padStart(2,'0')}`;
+
+  // "Month YYYY"  e.g. "January 2025", "Jan 2025", "JAN 2025"
+  const monYear = s.match(/^([a-zA-Z]+)\s+(\d{4})$/);
+  if (monYear) {
+    const mi = MONTH_NAMES.indexOf(monYear[1].toLowerCase().slice(0,3));
+    if (mi !== -1) return `${monYear[2]}-${String(mi+1).padStart(2,'0')}`;
+  }
+
+  // "YYYY Month"  e.g. "2025 Jan"
+  const yearMon = s.match(/^(\d{4})\s+([a-zA-Z]+)$/);
+  if (yearMon) {
+    const mi = MONTH_NAMES.indexOf(yearMon[2].toLowerCase().slice(0,3));
+    if (mi !== -1) return `${yearMon[1]}-${String(mi+1).padStart(2,'0')}`;
+  }
+
+  // "Month-YYYY" e.g. "Jan-2025"
+  const monDashYear = s.match(/^([a-zA-Z]+)-(\d{4})$/);
+  if (monDashYear) {
+    const mi = MONTH_NAMES.indexOf(monDashYear[1].toLowerCase().slice(0,3));
+    if (mi !== -1) return `${monDashYear[2]}-${String(mi+1).padStart(2,'0')}`;
+  }
+
+  // "YYYY" only — treat as January of that year
+  if (/^\d{4}$/.test(s)) return `${s}-01`;
+
+  // Month name only, e.g. "January" → current year
+  const monOnly = s.match(/^([a-zA-Z]+)$/);
+  if (monOnly) {
+    const mi = MONTH_NAMES.indexOf(monOnly[1].toLowerCase().slice(0,3));
+    if (mi !== -1) return `${new Date().getFullYear()}-${String(mi+1).padStart(2,'0')}`;
+  }
+
+  return s; // give up, return as-is
 }
 
-// ─── Salaries ──────────────────────────────────────────────────────────────
+function monthKeyLabel(key) {
+  const [yr, mo] = String(key).split('-');
+  if (!yr || !mo) return key;
+  const label = MONTH_LABELS[parseInt(mo, 10) - 1];
+  return label ? `${label} ${yr}` : key;
+}
+
+function sortMonthKeys(keys) {
+  return [...new Set(keys)].filter(Boolean).sort((a,b) => a.localeCompare(b));
+}
+
+function groupByMonth(rows, getKey) {
+  const map = {};
+  for (const r of rows) {
+    const k = toMonthKey(getKey(r));
+    if (!k) continue;
+    if (!map[k]) map[k] = [];
+    map[k].push(r);
+  }
+  return map;
+}
+
+// ─── Client name normaliser ───────────────────────────────────────────────────
+function normalizeClientName(name) {
+  if (!name) return '';
+  const suffixes = ['\\s+seo','\\s+ads','\\s+hosting','\\s+proto','\\s+web','\\s+design',
+                    '\\s+smm','\\s+ppc','\\s+dev','\\s+app','\\s+email','\\s+social'];
+  let n = String(name).trim();
+  for (const s of suffixes) n = n.replace(new RegExp(s + '$', 'i'), '');
+  return n.trim();
+}
+
+// ─── Is a row "empty" (all cells blank)? ──────────────────────────────────────
+function rowEmpty(r) {
+  return !r || r.every(c => !String(c).trim());
+}
+
+// ─── SALARIES ─────────────────────────────────────────────────────────────────
 async function fetchSalaries() {
   const rows = await fetchCSV(SHEET_URLS.salaries);
-  if (!rows.length) return [];
-  const headers = rows[0];
-  const nameIdx   = col(headers, 0, 'name', 'employee', 'staff');
-  const salaryIdx = col(headers, 1, 'salary', 'amount', 'monthly');
-  const roleIdx   = findColIndex(headers, 'role', 'designation', 'position', 'title');
+  if (rows.length < 2) return [];
+  const h = rows[0];
 
-  return rows.slice(1)
-    .filter(r => r[nameIdx] && String(r[nameIdx]).trim())
-    .map(r => ({
-      name:   String(r[nameIdx]).trim(),
-      salary: parseNumber(r[salaryIdx]),
-      role:   roleIdx >= 0 ? String(r[roleIdx] || '').trim() : ''
-    }))
-    .filter(e => e.name && e.salary > 0);
+  const nameCol   = colIdx(h, 0, 'name', 'employee', 'staff', 'person');
+  const salaryCol = colIdx(h, 1, 'salary', 'amount', 'monthly', 'net', 'pay', 'pkr');
+  const roleCol   = colIdx(h, -1, 'role', 'designation', 'position', 'title', 'dept');
+  const monthCol  = colIdx(h, -1, 'month', 'date', 'period');
+
+  console.log('[FlexoDash] Salaries cols → name:', nameCol, 'salary:', salaryCol, 'role:', roleCol, 'month:', monthCol);
+
+  return rows.slice(1).filter(r => !rowEmpty(r)).map(r => ({
+    name:   String(r[nameCol] || '').trim(),
+    salary: num(r[salaryCol]),
+    role:   roleCol >= 0 ? String(r[roleCol] || '').trim() : '',
+    month:  monthCol >= 0 ? toMonthKey(r[monthCol]) : ''
+  })).filter(e => e.name && e.salary > 0);
 }
 
-// ─── Monthly Expenses ───────────────────────────────────────────────────────
+// ─── MONTHLY EXPENSES ─────────────────────────────────────────────────────────
 async function fetchExpenses() {
   const rows = await fetchCSV(SHEET_URLS.expenses);
-  if (!rows.length) return [];
-  const headers = rows[0];
-  const monthIdx   = col(headers, 0, 'month', 'date', 'period');
-  const expenseIdx = col(headers, 1, 'expense', 'description', 'item', 'name');
-  const amtPKRIdx  = findColIndex(headers, 'pkr', 'amount pkr', 'cost pkr', 'rs');
-  const amtUSDIdx  = findColIndex(headers, 'usd', 'amount usd', 'cost usd', '$');
-  const amtIdx     = amtPKRIdx >= 0 ? amtPKRIdx : (amtUSDIdx >= 0 ? amtUSDIdx : col(headers, 2, 'amount', 'cost', 'total'));
-  const categoryIdx = findColIndex(headers, 'category', 'type', 'group');
-  const statusIdx   = findColIndex(headers, 'status', 'paid', 'state');
+  if (rows.length < 2) return [];
+  const h = rows[0];
 
-  return rows.slice(1)
-    .filter(r => r[expenseIdx] && String(r[expenseIdx]).trim())
-    .map(r => {
-      const amtRaw = parseNumber(r[amtIdx]);
-      const isPKR  = amtPKRIdx >= 0;
-      const amtPKR = isPKR ? amtRaw : toPKR(amtRaw, true);
-      const amtUSD = isPKR ? toUSD(amtRaw, true) : amtRaw;
-      return {
-        month:    String(r[monthIdx] || '').trim(),
-        expense:  String(r[expenseIdx]).trim(),
-        amtPKR,
-        amtUSD,
-        category: categoryIdx >= 0 ? String(r[categoryIdx] || '').trim() : inferCategory(String(r[expenseIdx]).trim()),
-        status:   statusIdx >= 0 ? String(r[statusIdx] || '').trim() : ''
-      };
-    })
-    .filter(e => e.expense && (e.amtPKR > 0 || e.amtUSD > 0));
+  const monthCol  = colIdx(h, 0, 'month', 'date', 'period');
+  const nameCol   = colIdx(h, 1, 'expense', 'description', 'item', 'name', 'particular');
+  const pkrCol    = colIdx(h, -1, 'pkr', 'rs', 'rupee', 'amount pkr', 'cost pkr');
+  const usdCol    = colIdx(h, -1, 'usd', 'dollar', 'amount usd', 'cost usd', '$');
+  const amtCol    = pkrCol >= 0 ? pkrCol : (usdCol >= 0 ? usdCol : colIdx(h, 2, 'amount', 'cost', 'total', 'value'));
+  const catCol    = colIdx(h, -1, 'category', 'type', 'group', 'head');
+  const statusCol = colIdx(h, -1, 'status', 'paid', 'state', 'remark');
+
+  console.log('[FlexoDash] Expenses cols → month:', monthCol, 'name:', nameCol, 'amt:', amtCol, '(pkr?', pkrCol >= 0, ')');
+
+  return rows.slice(1).filter(r => !rowEmpty(r)).map(r => {
+    const rawAmt = num(r[amtCol]);
+    // If column is explicitly PKR, keep as PKR. If USD, convert. If ambiguous, assume PKR (Pakistani agency).
+    const isPKR = usdCol < 0; // treat as PKR unless we found a USD column
+    const amtPKR = isPKR ? rawAmt : toPKR(rawAmt, true);
+    const amtUSD = isPKR ? toUSD(rawAmt, true) : rawAmt;
+    const expName = String(r[nameCol] || '').trim();
+    return {
+      month:    toMonthKey(r[monthCol]),
+      expense:  expName,
+      amtPKR,
+      amtUSD,
+      category: catCol >= 0 && r[catCol] ? String(r[catCol]).trim() : inferCategory(expName),
+      status:   statusCol >= 0 ? String(r[statusCol] || '').trim() : 'Paid'
+    };
+  }).filter(e => e.expense && (e.amtPKR > 0 || e.amtUSD > 0));
 }
 
 function inferCategory(name) {
-  const n = name.toLowerCase();
-  if (/connect|upwork|bid/i.test(n)) return 'Marketing';
-  if (/salary|payroll|staff|wage/i.test(n)) return 'Salaries';
-  if (/rent|office|electric|util|water|maid|bill/i.test(n)) return 'Office';
-  if (/internet|wifi|data|mobile|phone|sim/i.test(n)) return 'Internet/Comms';
-  if (/apollo|instantly|zoom|domain|godaddy|host|tool|software|sub|license/i.test(n)) return 'Tools & Software';
-  if (/ads|facebook|google ad|marketing|social|follower/i.test(n)) return 'Marketing';
+  const n = String(name).toLowerCase();
+  if (/connect|bid/i.test(n))                                       return 'Marketing';
+  if (/salary|payroll|staff|wage|pay/i.test(n))                     return 'Salaries';
+  if (/rent|office|electric|util|water|maid|bill|generator/i.test(n)) return 'Office';
+  if (/internet|wifi|data|mobile|phone|sim|ptcl/i.test(n))          return 'Internet/Comms';
+  if (/apollo|instantly|zoom|domain|godaddy|tool|software|sub|license|gsuite|slack/i.test(n)) return 'Tools & Software';
+  if (/ads|facebook|google ad|marketing|social|follower|instagram/i.test(n)) return 'Marketing';
   return 'Other';
 }
 
-// ─── Monthly Cash Inn ────────────────────────────────────────────────────────
+// ─── MONTHLY CASH INN ─────────────────────────────────────────────────────────
 async function fetchCashInn() {
   const rows = await fetchCSV(SHEET_URLS.cashInn);
-  if (!rows.length) return [];
-  const headers = rows[0];
+  if (rows.length < 2) return [];
+  const h = rows[0];
 
-  // Attempt header-based detection, fallback to spec column indices
-  const dateIdx       = col(headers, 0, 'date', 'month', 'period');
-  const clientIdx     = col(headers, 1, 'client', 'customer', 'company');
-  const projectIdx    = col(headers, 2, 'project', 'service', 'description');
-  const typeIdx       = findColIndex(headers, 'type', 'front', 'upsell', 'sale type');
-  // Spec: Gross Sales = col G (index 6)
-  const grossSalesIdx = col(headers, 6, 'gross', 'gross sale', 'revenue', 'amount');
-  // Spec: Agent = col I (index 8), AG Comm = col J (9), TL = col K (10), TL Comm = col L (11)
-  const agentColIdx   = col(headers, 8,  'agent', 'bidder', 'sales rep');
-  const agentCommIdx  = col(headers, 9,  'ag. comm', 'agent comm', 'ag comm', 'commission');
-  const tlColIdx      = col(headers, 10, 'tl', 'team lead', 'tl name');
-  const tlCommColIdx  = col(headers, 11, 'tl. comm', 'tl comm', 'tl commission');
+  // Column mapping – spec: G=gross(6), I=agent(8), J=agcomm(9), K=tl(10), L=tlcomm(11)
+  const dateCol    = colIdx(h, 0,  'date', 'month', 'period');
+  const clientCol  = colIdx(h, 1,  'client', 'customer', 'company', 'buyer');
+  const projectCol = colIdx(h, 2,  'project', 'service', 'description', 'work');
+  const typeCol    = colIdx(h, -1, 'type', 'sale type', 'category', 'front', 'upsell');
+  const grossCol   = colIdx(h, 6,  'gross', 'gross sale', 'gross amount', 'revenue', 'amount');
+  const agentCol   = colIdx(h, 8,  'agent', 'bidder', 'sales', 'rep');
+  const agCommCol  = colIdx(h, 9,  'ag. comm', 'agent comm', 'ag comm', 'agent commission');
+  const tlCol      = colIdx(h, 10, 'tl', 'team lead', 'team leader');
+  const tlCommCol  = colIdx(h, 11, 'tl. comm', 'tl comm', 'tl commission');
+  const currCol    = colIdx(h, -1, 'currency', 'curr', 'cur');
 
-  // Currency of gross sales — look for a currency column or assume USD
-  const currencyIdx = findColIndex(headers, 'currency', 'curr');
+  console.log('[FlexoDash] CashInn cols → date:', dateCol, 'client:', clientCol, 'gross:', grossCol, 'agent:', agentCol, 'tl:', tlCol);
 
-  return rows.slice(1)
-    .filter(r => r.some(c => String(c).trim()))
-    .map(r => {
-      const grossRaw  = parseNumber(r[grossSalesIdx]);
-      const curr      = currencyIdx >= 0 ? String(r[currencyIdx] || 'USD').toUpperCase() : 'USD';
-      const grossUSD  = curr === 'PKR' ? toUSD(grossRaw, false) : grossRaw;
-      const grossPKR  = curr === 'PKR' ? grossRaw : toPKR(grossRaw, false);
-      const projectName = String(r[projectIdx] || '').trim();
-      const saleType  = typeIdx >= 0
-        ? String(r[typeIdx] || '').toLowerCase()
-        : (/upsell|up-sell|upgrade/i.test(projectName) ? 'upsell' : 'front');
+  return rows.slice(1).filter(r => !rowEmpty(r)).map(r => {
+    const grossRaw   = num(r[grossCol]);
+    // Detect currency: explicit column > $ prefix in cell > assume USD (Upwork revenue)
+    let currency = 'USD';
+    if (currCol >= 0 && r[currCol]) {
+      currency = String(r[currCol]).trim().toUpperCase().includes('PKR') ? 'PKR' : 'USD';
+    } else if (String(r[grossCol] || '').includes('Rs') || String(r[grossCol] || '').includes('PKR')) {
+      currency = 'PKR';
+    }
+    const grossUSD = currency === 'PKR' ? toUSD(grossRaw, false) : grossRaw;
+    const grossPKR = currency === 'PKR' ? grossRaw : toPKR(grossRaw, false);
 
-      return {
-        date:       String(r[dateIdx] || '').trim(),
-        client:     String(r[clientIdx] || '').trim(),
-        project:    projectName,
-        grossUSD,
-        grossPKR,
-        saleType,
-        agent:      String(r[agentColIdx] || '').trim(),
-        agentComm:  parseNumber(r[agentCommIdx]),
-        tl:         String(r[tlColIdx] || '').trim(),
-        tlComm:     parseNumber(r[tlCommColIdx]),
-        currency:   curr
-      };
-    })
-    .filter(r => r.client || r.grossUSD > 0);
+    const project  = String(r[projectCol] || '').trim();
+    let saleType   = 'front';
+    if (typeCol >= 0 && r[typeCol]) {
+      saleType = /upsell|up.?sell|upgrade/i.test(r[typeCol]) ? 'upsell' : 'front';
+    } else if (/upsell|up.?sell|upgrade/i.test(project)) {
+      saleType = 'upsell';
+    }
+
+    return {
+      date:      toMonthKey(r[dateCol]),
+      rawDate:   String(r[dateCol] || '').trim(),
+      client:    String(r[clientCol] || '').trim(),
+      project,
+      grossUSD,
+      grossPKR,
+      saleType,
+      agent:     String(r[agentCol] || '').trim(),
+      agentComm: num(r[agCommCol]),
+      tl:        String(r[tlCol] || '').trim(),
+      tlComm:    num(r[tlCommCol])
+    };
+  }).filter(r => r.grossUSD > 0 || r.client);
 }
 
-// ─── Monthly Revenue ─────────────────────────────────────────────────────────
+// ─── MONTHLY REVENUE ──────────────────────────────────────────────────────────
 async function fetchRevenue() {
   const rows = await fetchCSV(SHEET_URLS.revenue);
-  if (!rows.length) return [];
-  const headers = rows[0];
-  const monthIdx  = col(headers, 0, 'month', 'date', 'period');
-  const revUSDIdx = findColIndex(headers, 'usd', 'revenue usd', 'rev usd');
-  const revPKRIdx = findColIndex(headers, 'pkr', 'revenue pkr', 'rev pkr', 'rs');
-  const revIdx    = revUSDIdx >= 0 ? revUSDIdx : (revPKRIdx >= 0 ? revPKRIdx : col(headers, 1, 'revenue', 'total', 'amount'));
-  const yearIdx   = findColIndex(headers, 'year');
+  if (rows.length < 2) return [];
+  const h = rows[0];
 
-  return rows.slice(1)
-    .filter(r => r[monthIdx] && String(r[monthIdx]).trim())
-    .map(r => {
-      const raw = parseNumber(r[revIdx]);
-      const isPKR = revPKRIdx >= 0 && revUSDIdx < 0;
-      const revUSD = isPKR ? toUSD(raw, false) : raw;
-      const revPKR = isPKR ? raw : toPKR(raw, false);
-      return {
-        month:  String(r[monthIdx]).trim(),
-        year:   yearIdx >= 0 ? String(r[yearIdx] || '').trim() : extractYear(String(r[monthIdx])),
-        revUSD,
-        revPKR
-      };
-    })
-    .filter(r => r.month && (r.revUSD > 0 || r.revPKR > 0));
+  const monthCol  = colIdx(h, 0, 'month', 'date', 'period');
+  const usdCol    = colIdx(h, -1, 'usd', 'dollar', 'revenue usd', '$');
+  const pkrCol    = colIdx(h, -1, 'pkr', 'rs', 'revenue pkr', 'rupee');
+  // If neither explicit: fall back to col 1, assumed PKR for Pakistani agency
+  const amtCol    = usdCol >= 0 ? usdCol : (pkrCol >= 0 ? pkrCol : colIdx(h, 1, 'revenue', 'total', 'amount', 'value'));
+  const isPKR     = usdCol < 0;
+
+  console.log('[FlexoDash] Revenue cols → month:', monthCol, 'amt:', amtCol, 'isPKR:', isPKR);
+
+  return rows.slice(1).filter(r => !rowEmpty(r) && r[monthCol]).map(r => {
+    const raw    = num(r[amtCol]);
+    const revUSD = isPKR ? toUSD(raw, false) : raw;
+    const revPKR = isPKR ? raw : toPKR(raw, false);
+    return {
+      month: toMonthKey(r[monthCol]),
+      revUSD,
+      revPKR
+    };
+  }).filter(r => r.month && (r.revUSD > 0 || r.revPKR > 0));
 }
 
-// ─── Company PnL ─────────────────────────────────────────────────────────────
+// ─── COMPANY PnL ──────────────────────────────────────────────────────────────
 async function fetchPnL() {
   const rows = await fetchCSV(SHEET_URLS.pnl);
-  if (!rows.length) return [];
-  const headers = rows[0];
-  const monthIdx  = col(headers, 0, 'month', 'date', 'period');
-  const revIdx    = col(headers, 1, 'revenue', 'income', 'total rev');
-  const expIdx    = col(headers, 2, 'expense', 'cost', 'total exp');
-  const profitIdx = col(headers, 3, 'profit', 'net', 'p&l', 'pnl');
-  const yearIdx    = findColIndex(headers, 'year');
+  if (rows.length < 2) return [];
+  const h = rows[0];
 
-  return rows.slice(1)
-    .filter(r => r[monthIdx] && String(r[monthIdx]).trim())
-    .map(r => {
-      const rev  = parseNumber(r[revIdx]);
-      const exp  = parseNumber(r[expIdx]);
-      const prof = profitIdx >= 0 && r[profitIdx] ? parseNumber(r[profitIdx]) : rev - exp;
-      return {
-        month:   String(r[monthIdx]).trim(),
-        year:    yearIdx >= 0 ? String(r[yearIdx] || '').trim() : extractYear(String(r[monthIdx])),
-        revenue: rev,
-        expenses: exp,
-        profit:  prof,
-        margin:  rev > 0 ? (prof / rev) * 100 : 0
-      };
-    })
-    .filter(r => r.month);
+  const monthCol  = colIdx(h, 0, 'month', 'date', 'period');
+  const revCol    = colIdx(h, 1, 'revenue', 'income', 'sales', 'total rev', 'gross');
+  const expCol    = colIdx(h, 2, 'expense', 'cost', 'expenditure', 'total exp');
+  const profCol   = colIdx(h, 3, 'profit', 'net', 'p&l', 'pnl', 'net profit');
+
+  console.log('[FlexoDash] PnL cols → month:', monthCol, 'rev:', revCol, 'exp:', expCol, 'profit:', profCol);
+
+  return rows.slice(1).filter(r => !rowEmpty(r) && r[monthCol]).map(r => {
+    const rev  = num(r[revCol]);
+    const exp  = num(r[expCol]);
+    const prof = r[profCol] ? num(r[profCol]) : (rev - exp);
+    return {
+      month:    toMonthKey(r[monthCol]),
+      revenue:  rev,
+      expenses: exp,
+      profit:   prof,
+      margin:   rev > 0 ? (prof / rev * 100) : 0
+    };
+  }).filter(r => r.month);
 }
 
-// ─── Master load ─────────────────────────────────────────────────────────────
+// ─── Master load ──────────────────────────────────────────────────────────────
 async function loadAllData() {
   const results = await Promise.allSettled([
     fetchSalaries(),
@@ -218,86 +376,17 @@ async function loadAllData() {
     fetchPnL()
   ]);
 
+  const names  = ['Salaries', 'Expenses', 'CashInn', 'Revenue', 'PnL'];
   const errors = [];
   const [salaries, expenses, cashInn, revenue, pnl] = results.map((r, i) => {
     if (r.status === 'rejected') {
-      const names = ['Salaries', 'Expenses', 'Cash Inn', 'Revenue', 'PnL'];
+      console.error(`[FlexoDash] ${names[i]} failed:`, r.reason);
       errors.push(`${names[i]}: ${r.reason?.message || r.reason}`);
       return [];
     }
+    console.log(`[FlexoDash] ${names[i]}: ${r.value.length} records`);
     return r.value;
   });
 
   return { salaries, expenses, cashInn, revenue, pnl, errors };
-}
-
-function extractYear(monthStr) {
-  const m = monthStr.match(/\b(20\d{2})\b/);
-  return m ? m[1] : '';
-}
-
-function normalizeClientName(name) {
-  if (!name) return '';
-  const suffixes = ['seo', 'ads', 'hosting', 'proto', 'web', 'design', 'smm', 'ppc', 'dev', 'app'];
-  let normalized = name.trim();
-  for (const suffix of suffixes) {
-    normalized = normalized.replace(new RegExp(`\\s+${suffix}$`, 'i'), '');
-  }
-  return normalized.trim();
-}
-
-function groupByMonth(rows, dateField = 'date') {
-  const map = {};
-  for (const r of rows) {
-    const key = extractMonthKey(r[dateField]);
-    if (!map[key]) map[key] = [];
-    map[key].push(r);
-  }
-  return map;
-}
-
-function extractMonthKey(dateStr) {
-  if (!dateStr) return 'Unknown';
-  // Try to parse common formats: "Jan 2025", "2025-01", "January 2025", "01/2025"
-  const s = String(dateStr).trim();
-  const monthNames = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
-
-  // "MMM YYYY" or "Month YYYY"
-  const m1 = s.match(/^([a-zA-Z]+)\s+(\d{4})$/);
-  if (m1) {
-    const mIdx = monthNames.indexOf(m1[1].toLowerCase().slice(0, 3));
-    if (mIdx >= 0) return `${m1[2]}-${String(mIdx + 1).padStart(2, '0')}`;
-  }
-
-  // "YYYY-MM" or "YYYY/MM"
-  const m2 = s.match(/^(\d{4})[-/](\d{1,2})$/);
-  if (m2) return `${m2[1]}-${m2[2].padStart(2, '0')}`;
-
-  // "MM/YYYY"
-  const m3 = s.match(/^(\d{1,2})[-/](\d{4})$/);
-  if (m3) return `${m3[2]}-${m3[1].padStart(2, '0')}`;
-
-  // Full date "YYYY-MM-DD" or "MM/DD/YYYY"
-  const m4 = s.match(/^(\d{4})-(\d{2})-\d{2}$/);
-  if (m4) return `${m4[1]}-${m4[2]}`;
-
-  const m5 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m5) return `${m5[3]}-${m5[1].padStart(2, '0')}`;
-
-  return s;
-}
-
-function sortMonthKeys(keys) {
-  return [...keys].sort((a, b) => a.localeCompare(b));
-}
-
-function monthKeyToLabel(key) {
-  const [year, month] = key.split('-');
-  if (!year || !month) return key;
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${months[parseInt(month, 10) - 1] || ''} ${year}`;
-}
-
-function invalidateCacheAll() {
-  Object.keys(_cache).forEach(k => delete _cache[k]);
 }
