@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FlexoLabs — Financial Dashboard</title>
+  <meta name="description" content="FlexoLabs digital agency financial analytics dashboard">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+  <!-- Papa Parse (CSV parser) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"
+          integrity="sha512-dfX5uYVXzyU8+KHqj8bjo7UkOdg18PaOtpa48djpNbZHwExddghZ+ZmzWT06R5v6NSk3ZUfsH6FNEDepLx9hPQ=="
+          crossorigin="anonymous"></script>
+</head>
+<body>
+
+<div class="app-container">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <div class="logo-icon">F</div>
+        <span class="logo-text">FlexoLabs</span>
+      </div>
+      <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">⇤</button>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" data-page="overview">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">Overview</span>
+      </a>
+      <a href="#" class="nav-item" data-page="upwork">
+        <span class="nav-icon">🔗</span>
+        <span class="nav-label">Upwork ROI</span>
+      </a>
+      <a href="#" class="nav-item" data-page="clients">
+        <span class="nav-icon">👥</span>
+        <span class="nav-label">Clients</span>
+      </a>
+      <a href="#" class="nav-item" data-page="team">
+        <span class="nav-icon">🏆</span>
+        <span class="nav-label">Team</span>
+      </a>
+      <a href="#" class="nav-item" data-page="expenses">
+        <span class="nav-icon">💰</span>
+        <span class="nav-label">Expenses</span>
+      </a>
+      <a href="#" class="nav-item" data-page="health">
+        <span class="nav-icon">📈</span>
+        <span class="nav-label">Financial Health</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-text">Updated: <span id="lastUpdated">—</span></div>
+      <button class="refresh-btn" id="refreshBtn">↻ Refresh Data</button>
+    </div>
+  </aside>
+
+  <!-- ── Main ─────────────────────────────────────────────────────────────── -->
+  <main class="main-content">
+
+    <!-- Header -->
+    <header class="main-header">
+      <div class="header-left">
+        <button class="mobile-menu-btn" id="mobileMenuBtn" title="Open menu">☰</button>
+        <h1 class="page-title" id="pageTitle">Overview</h1>
+      </div>
+      <div class="header-right">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="searchInput" placeholder="Filter tables…" class="search-input" autocomplete="off">
+        </div>
+        <div class="currency-toggle">
+          <button class="toggle-btn active" data-currency="usd" id="usdBtn">USD</button>
+          <button class="toggle-btn"        data-currency="pkr" id="pkrBtn">PKR</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="loading-spinner"></div>
+      <p>Loading data from Google Sheets…</p>
+    </div>
+
+    <!-- Error banner -->
+    <div class="error-banner" id="errorBanner" style="display:none;">
+      <span id="errorMessage">An error occurred.</span>
+      <button onclick="document.getElementById('errorBanner').style.display='none'">✕</button>
+    </div>
+
+    <!-- Dynamic page content -->
+    <div class="page-content" id="pageContent"></div>
+
+  </main>
+</div>
+
+<!-- Scripts (order matters) -->
+<script src="currency-converter.js"></script>
+<script src="data-fetcher.js"></script>
+<script src="chart-utils.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
