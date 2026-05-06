@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flexo Labs Financial Dashboard</title>
+    <meta name="description" content="Live Flexo Labs financial dashboard connected to published Google Sheets." />
+    <link rel="preconnect" href="https://docs.google.com" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar" aria-label="Dashboard navigation">
+        <div class="brand">
+          <div class="brand-mark">FL</div>
+          <div>
+            <p>Flexo Labs</p>
+            <span>Financial Dashboard</span>
+          </div>
+        </div>
+        <nav>
+          <a href="#overview" class="active">Overview</a>
+          <a href="#pnl">Company PnL</a>
+          <a href="#revenue">Revenue</a>
+          <a href="#expenses">Expenses</a>
+          <a href="#team">Team Payouts</a>
+          <a href="#cashin">Cash In</a>
+        </nav>
+        <div class="sync-card">
+          <span class="pulse"></span>
+          <div>
+            <strong>Live Sheets</strong>
+            <small id="lastUpdated">Syncing…</small>
+          </div>
+        </div>
+      </aside>
+
+      <main>
+        <header class="hero" id="overview">
+          <div>
+            <p class="eyebrow">Light theme · Google Sheets live</p>
+            <h1>Flexo Labs revenue, expenses & profit dashboard</h1>
+            <p class="lede">Data auto-loads from your published Google Sheet tabs and refreshes every 10 minutes.</p>
+          </div>
+          <div class="toolbar">
+            <label>
+              Year
+              <select id="yearFilter"><option value="all">All years</option></select>
+            </label>
+            <label>
+              Month
+              <select id="monthFilter"><option value="all">All months</option></select>
+            </label>
+            <button id="refreshBtn" type="button">Refresh</button>
+          </div>
+        </header>
+
+        <section class="status" id="statusMessage" role="status">Loading published Google Sheets…</section>
+
+        <section class="kpi-grid" aria-label="Key metrics">
+          <article class="kpi"><span>Total Revenue</span><strong id="kpiRevenue">—</strong><small id="kpiRevenueSub">PKR</small></article>
+          <article class="kpi"><span>Total Expenses</span><strong id="kpiExpenses">—</strong><small>PKR</small></article>
+          <article class="kpi"><span>Net Profit / Loss</span><strong id="kpiProfit">—</strong><small id="kpiProfitSub">Selected period</small></article>
+          <article class="kpi"><span>Cash In</span><strong id="kpiCash">—</strong><small>PKR from commissions</small></article>
+        </section>
+
+        <section class="grid two" id="pnl">
+          <article class="panel chart-panel">
+            <div class="panel-head"><div><p class="eyebrow">Company PnL</p><h2>Revenue vs Expenses</h2></div><span id="pnlCount">—</span></div>
+            <div class="chart" id="pnlChart"></div>
+          </article>
+          <article class="panel chart-panel">
+            <div class="panel-head"><div><p class="eyebrow">Profitability</p><h2>Monthly PnL Trend</h2></div></div>
+            <div class="chart" id="profitChart"></div>
+          </article>
+        </section>
+
+        <section class="grid two" id="revenue">
+          <article class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Revenue</p><h2>Net income by month</h2></div></div>
+            <div class="chart" id="revenueChart"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Project cash in</p><h2>Top profiles / platforms</h2></div></div>
+            <div id="profileList" class="rank-list"></div>
+          </article>
+        </section>
+
+        <section class="grid two" id="expenses">
+          <article class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Expenses</p><h2>Expense categories</h2></div></div>
+            <div id="expenseList" class="rank-list"></div>
+          </article>
+          <article class="panel" id="team">
+            <div class="panel-head"><div><p class="eyebrow">Salaries</p><h2>Team payouts</h2></div></div>
+            <div id="salaryList" class="rank-list"></div>
+          </article>
+        </section>
+
+        <section class="panel table-panel" id="cashin">
+          <div class="panel-head"><div><p class="eyebrow">Details</p><h2>Latest monthly records</h2></div></div>
+          <div class="tabs" role="tablist">
+            <button class="tab active" data-table="pnlRows">PnL</button>
+            <button class="tab" data-table="revenueRows">Revenue</button>
+            <button class="tab" data-table="expenseRows">Expenses</button>
+            <button class="tab" data-table="salaryRows">Salaries</button>
+            <button class="tab" data-table="cashRows">Cash In</button>
+          </div>
+          <div class="table-wrap"><table id="detailsTable"></table></div>
+        </section>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>
