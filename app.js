@@ -326,18 +326,38 @@ function exportCsv() {
 
 function debounce(fn, delay = 250) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); }; }
 
+function statusSummary(raw) {
+  const sheetSummary = Object.values(raw.meta || {})
+    .map((sheet) => `${sheet.label}: ${sheet.rows}${sheet.status ? ` (${sheet.status})` : ''}`)
+    .join(' · ');
+  const warning = raw.errors?.length ? ` · Warnings: ${raw.errors.length} sheet(s) could not load. Open the browser console for details.` : '';
+  return `${raw.fromCache ? 'Cached' : 'Live'} data loaded · ${sheetSummary}${warning}`;
+}
+
 async function init(forceRefresh = false) {
   const status = document.getElementById('statusBar');
-  status.className = 'status-bar loading'; status.textContent = 'Loading live Google Sheets data...';
+  status.className = 'status-bar loading';
+  status.textContent = 'Loading live Google Sheets data... tabs and controls are ready.';
+
+  if (!state.model) {
+    state.raw = FlexoData.createEmptyPayload();
+    state.model = buildModel(state.raw);
+    renderCurrentPage();
+  }
+
   try {
     state.raw = await FlexoData.loadDashboardData({ forceRefresh });
     state.model = buildModel(state.raw);
-    status.className = 'status-bar';
-    status.textContent = `${state.raw.fromCache ? 'Cached' : 'Live'} data loaded · ${Object.values(state.raw.meta).map((m) => `${m.label}: ${m.rows}`).join(' · ')}`;
+    status.className = state.raw.errors?.length ? 'status-bar warning' : 'status-bar';
+    status.textContent = statusSummary(state.raw);
+    if (state.raw.errors?.length) console.warn('FlexoLabs sheet load warnings:', state.raw.errors);
     renderCurrentPage();
   } catch (error) {
+    state.raw = FlexoData.createEmptyPayload();
+    state.model = buildModel(state.raw);
     status.className = 'status-bar error';
-    status.textContent = `Unable to load Google Sheets data. ${error.message}`;
+    status.textContent = `Unable to load Google Sheets data. ${error.message}. The dashboard controls still work, but live values are unavailable.`;
+    renderCurrentPage();
   }
 }
 

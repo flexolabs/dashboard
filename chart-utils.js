@@ -1,4 +1,21 @@
 const chartRegistry = new Map();
+let chartJsPromise = null;
+
+function loadChartJs() {
+  if (window.Chart) return Promise.resolve(window.Chart);
+  if (chartJsPromise) return chartJsPromise;
+
+  chartJsPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js';
+    script.async = true;
+    script.onload = () => resolve(window.Chart);
+    script.onerror = () => reject(new Error('Chart.js could not be loaded from the CDN'));
+    document.head.appendChild(script);
+  });
+
+  return chartJsPromise;
+}
 
 function destroyChart(id) {
   const chart = chartRegistry.get(id);
@@ -48,7 +65,17 @@ function baseOptions(currency = 'usd', stacked = false) {
 
 function renderChart(id, config) {
   const canvas = document.getElementById(id);
-  if (!canvas || !window.Chart) return null;
+  if (!canvas) return null;
+
+  if (!window.Chart) {
+    loadChartJs()
+      .then(() => {
+        if (document.getElementById(id)) renderChart(id, config);
+      })
+      .catch((error) => console.warn(error.message));
+    return null;
+  }
+
   destroyChart(id);
   const chart = new Chart(canvas, config);
   chartRegistry.set(id, chart);
@@ -118,6 +145,7 @@ function renderStackedChart(id, labels, datasets, currency) {
 }
 
 window.FlexoCharts = {
+  loadChartJs,
   destroyChart,
   renderRevenueExpenseChart,
   renderLineChart,

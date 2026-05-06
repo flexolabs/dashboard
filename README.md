@@ -61,3 +61,11 @@ The URLs are defined in `data-fetcher.js`.
 ## Deployment
 
 Upload the static files to Netlify, Vercel, GitHub Pages, or any static hosting provider. No build step is required.
+
+## Troubleshooting Blank or Stuck Dashboard
+
+If the page stays on "Loading live Google Sheets data..." or the tabs do not respond, make sure the latest branch files include all JavaScript files and not only `index.html`/`README.md`.
+
+This version does not block the dashboard UI on the Chart.js CDN. The app loads controls first, then lazy-loads charts. Google Sheets requests also have a timeout and per-sheet fallback so one blocked sheet will not freeze the entire dashboard.
+
+If live data still does not appear on a hosted domain, open the browser console and look for `FlexoLabs sheet load warnings`. Those warnings identify whether Google CSV or the CORS fallback was blocked by the hosting environment, browser extension, or network policy.

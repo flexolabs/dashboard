@@ -1,28 +1,35 @@
+const GOOGLE_SHEET_ID = '2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ';
+
 const SHEET_SOURCES = {
   salaries: {
     label: 'Salaries',
-    url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ/pub?gid=1002409884&single=true&output=csv',
+    gid: '1002409884',
   },
   expenses: {
     label: 'Monthly Expenses',
-    url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ/pub?gid=701838879&single=true&output=csv',
+    gid: '701838879',
   },
   cashInn: {
     label: 'Monthly Cash Inn',
-    url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ/pub?gid=1879112264&single=true&output=csv',
+    gid: '1879112264',
   },
   revenue: {
     label: 'Monthly Revenue',
-    url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ/pub?gid=527351239&single=true&output=csv',
+    gid: '527351239',
   },
   pnl: {
     label: 'Company PnL',
-    url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR679-Bh2vFV-O2gii6bfM1mECLQa7zmLw6IKYk8OwPJoJF6hmpKjKDW_9niulgIUdT4K5gCE7rlwiQ/pub?gid=62657854&single=true&output=csv',
+    gid: '62657854',
   },
 };
 
-const CACHE_KEY = 'flexolabs-dashboard-cache-v1';
+Object.values(SHEET_SOURCES).forEach((source) => {
+  source.url = `https://docs.google.com/spreadsheets/d/e/${GOOGLE_SHEET_ID}/pub?gid=${source.gid}&single=true&output=csv`;
+});
+
+const CACHE_KEY = 'flexolabs-dashboard-cache-v2';
 const CACHE_TTL = 5 * 60 * 1000;
+const REQUEST_TIMEOUT = 12000;
 
 function parseCSV(csvText) {
   const rows = [];
@@ -64,6 +71,19 @@ function parseCSV(csvText) {
   }, {}));
 }
 
+function createEmptyPayload() {
+  return Object.keys(SHEET_SOURCES).reduce((payload, key) => {
+    payload[key] = [];
+    payload.meta[key] = {
+      label: SHEET_SOURCES[key].label,
+      rows: 0,
+      fetchedAt: null,
+      status: 'pending',
+    };
+    return payload;
+  }, { meta: {}, errors: [] });
+}
+
 function getCachedData() {
   try {
     const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
@@ -82,11 +102,57 @@ function setCachedData(payload) {
   }
 }
 
+function timeoutSignal(timeout = REQUEST_TIMEOUT) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  return { controller, timer };
+}
+
+async function fetchTextWithTimeout(url, timeout = REQUEST_TIMEOUT) {
+  const { controller, timer } = timeoutSignal(timeout);
+  try {
+    const response = await fetch(url, {
+      cache: 'no-store',
+      mode: 'cors',
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const text = await response.text();
+    if (!text.trim()) throw new Error('empty response');
+    if (/^\s*</.test(text)) throw new Error('received HTML instead of CSV');
+    return text;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function proxiedCsvUrl(url) {
+  return `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+}
+
 async function fetchSheet(key, source) {
-  const response = await fetch(source.url, { cache: 'no-store' });
-  if (!response.ok) throw new Error(`${source.label} failed with ${response.status}`);
-  const text = await response.text();
-  return { key, label: source.label, rows: parseCSV(text), fetchedAt: new Date().toISOString() };
+  const attempts = [
+    { name: 'Google CSV', url: source.url },
+    { name: 'CORS proxy CSV', url: proxiedCsvUrl(source.url) },
+  ];
+  const errors = [];
+
+  for (const attempt of attempts) {
+    try {
+      const text = await fetchTextWithTimeout(attempt.url);
+      return {
+        key,
+        label: source.label,
+        rows: parseCSV(text),
+        fetchedAt: new Date().toISOString(),
+        status: attempt.name,
+      };
+    } catch (error) {
+      errors.push(`${attempt.name}: ${error.name === 'AbortError' ? 'request timed out' : error.message}`);
+    }
+  }
+
+  throw new Error(errors.join(' | '));
 }
 
 async function loadDashboardData({ forceRefresh = false } = {}) {
@@ -95,18 +161,47 @@ async function loadDashboardData({ forceRefresh = false } = {}) {
     if (cached) return { ...cached, fromCache: true };
   }
 
-  const entries = await Promise.all(
+  const payload = createEmptyPayload();
+  const results = await Promise.allSettled(
     Object.entries(SHEET_SOURCES).map(async ([key, source]) => fetchSheet(key, source))
   );
 
-  const payload = entries.reduce((data, sheet) => {
-    data[sheet.key] = sheet.rows;
-    data.meta[sheet.key] = { label: sheet.label, rows: sheet.rows.length, fetchedAt: sheet.fetchedAt };
-    return data;
-  }, { meta: {} });
+  results.forEach((result, index) => {
+    const key = Object.keys(SHEET_SOURCES)[index];
+    const source = SHEET_SOURCES[key];
 
-  setCachedData(payload);
+    if (result.status === 'fulfilled') {
+      const sheet = result.value;
+      payload[sheet.key] = sheet.rows;
+      payload.meta[sheet.key] = {
+        label: sheet.label,
+        rows: sheet.rows.length,
+        fetchedAt: sheet.fetchedAt,
+        status: sheet.status,
+      };
+      return;
+    }
+
+    payload.errors.push(`${source.label}: ${result.reason.message}`);
+    payload.meta[key] = {
+      label: source.label,
+      rows: 0,
+      fetchedAt: null,
+      status: 'failed',
+      error: result.reason.message,
+    };
+  });
+
+  const loadedRows = Object.values(payload.meta).reduce((sum, sheet) => sum + sheet.rows, 0);
+  if (loadedRows > 0) setCachedData(payload);
   return { ...payload, fromCache: false };
 }
 
-window.FlexoData = { SHEET_SOURCES, parseCSV, loadDashboardData, CACHE_TTL };
+window.FlexoData = {
+  SHEET_SOURCES,
+  parseCSV,
+  loadDashboardData,
+  createEmptyPayload,
+  CACHE_TTL,
+  REQUEST_TIMEOUT,
+};
