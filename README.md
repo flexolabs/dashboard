@@ -69,3 +69,7 @@ If the page stays on "Loading live Google Sheets data..." or the tabs do not res
 This version does not block the dashboard UI on the Chart.js CDN. The app loads controls first, then lazy-loads charts. Google Sheets requests also have a timeout and per-sheet fallback so one blocked sheet will not freeze the entire dashboard.
 
 If live data still does not appear on a hosted domain, open the browser console and look for `FlexoLabs sheet load warnings`. Those warnings identify whether Google CSV or the CORS fallback was blocked by the hosting environment, browser extension, or network policy.
+
+## Console Error Fix
+
+If the browser console shows `Identifier 'toPKR' has already been declared`, make sure you are using this latest version. The app script is isolated from global helper names so it no longer conflicts with functions exposed by `currency-converter.js`.

@@ -1,3 +1,4 @@
+(() => {
 const { toPKR, toUSD, formatCurrency, COST_PER_CONNECT_USD, COST_PER_CONNECT_PKR, CONNECT_PACKAGE_COST, CONNECTS_PER_PACKAGE } = window.FlexoCurrency;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -377,3 +378,4 @@ document.getElementById('refreshBtn').addEventListener('click', () => init(true)
 document.getElementById('globalSearch').addEventListener('input', debounce((event) => { state.query = event.target.value.toLowerCase(); renderCurrentPage(); }));
 
 init();
+})();
