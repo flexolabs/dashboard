@@ -16,6 +16,10 @@ const moneyUSD = new Intl.NumberFormat('en-US', { style: 'currency', currency: '
 
 window.addEventListener('DOMContentLoaded', () => {
   bindUI();
+  state.data = sampleData();
+  hydrateFilters();
+  render();
+  showStatus('Dashboard is ready. Syncing live Google Sheets in the background…');
   loadDashboard();
   setInterval(loadDashboard, 10 * 60 * 1000);
 });
@@ -41,18 +45,29 @@ function bindUI() {
 }
 
 async function loadDashboard() {
-  showStatus('Loading published Google Sheets…');
+  showStatus('Dashboard is visible. Updating numbers from published Google Sheets…');
   try {
-    const entries = await Promise.all(Object.entries(SHEETS).map(async ([key, config]) => [key, await loadSheet(config.gid)]));
-    state.raw = Object.fromEntries(entries);
-    state.data = transformData(state.raw);
+    const results = await Promise.allSettled(Object.entries(SHEETS).map(async ([key, config]) => [key, await loadSheet(config.gid)]));
+    const loaded = Object.fromEntries(results.filter((result) => result.status === 'fulfilled').map((result) => result.value));
+    const failed = results.filter((result) => result.status === 'rejected');
+    if (!Object.keys(loaded).length) throw new Error('All sheet tabs failed to load');
+    state.raw = { ...state.raw, ...loaded };
+    state.data = mergeWithFallback(transformData(state.raw), sampleData());
     hydrateFilters();
     render();
     document.getElementById('lastUpdated').textContent = `Synced ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    hideStatus();
+    if (failed.length) {
+      showStatus(`${Object.keys(loaded).length} sheet tabs synced. ${failed.length} tab(s) could not load, so fallback data remains visible for those sections.`);
+    } else {
+      hideStatus();
+    }
   } catch (error) {
     console.error(error);
-    showStatus(`Could not load live Google Sheets. Please confirm tabs are published to web. ${error.message}`);
+    state.data = sampleData();
+    hydrateFilters();
+    render();
+    document.getElementById('lastUpdated').textContent = 'Live sync failed';
+    showStatus(`Live Google Sheets could not be reached, but the dashboard is still visible with sample data. Check that every tab is published to web. ${error.message}`);
   }
 }
 
@@ -61,9 +76,15 @@ function loadSheet(gid) {
     const callback = `flexoSheet_${gid}_${Date.now()}`;
     const script = document.createElement('script');
     const timeout = setTimeout(() => cleanup(() => reject(new Error(`Timeout loading sheet gid ${gid}`))), 20000);
-    window[callback] = (response) => cleanup(() => resolve(gvizToRows(response.table)));
+    window[callback] = (response) => cleanup(() => {
+      if (!response || response.status === 'error' || !response.table) {
+        reject(new Error(`Invalid Google Sheets response for gid ${gid}`));
+        return;
+      }
+      resolve(gvizToRows(response.table));
+    });
     script.onerror = () => cleanup(() => reject(new Error(`Network error loading sheet gid ${gid}`)));
-    script.src = `https://docs.google.com/spreadsheets/d/e/${PUB_ID}/gviz/tq?gid=${gid}&headers=1&tqx=${encodeURIComponent(`version:0.7;responseHandler:${callback}`)}`;
+    script.src = `https://docs.google.com/spreadsheets/d/e/${PUB_ID}/gviz/tq?gid=${gid}&headers=1&tqx=${encodeURIComponent(`version:0.7;out:json;responseHandler:${callback}`)}&cacheBust=${Date.now()}`;
     document.body.appendChild(script);
     function cleanup(done) {
       clearTimeout(timeout);
@@ -80,6 +101,61 @@ function gvizToRows(table) {
     const cell = row.c[index];
     return [header || `Column ${index + 1}`, cell ? (cell.f ?? cell.v ?? '') : ''];
   })));
+}
+
+
+function mergeWithFallback(live, fallback) {
+  return Object.fromEntries(Object.entries(fallback).map(([key, rows]) => [key, live[key] && live[key].length ? live[key] : rows]));
+}
+
+function sampleData() {
+  return {
+    pnlRows: [
+      { year: 2025, month: 'JAN', monthNo: 1, Expense: 824620, Revenue: 894471, PnL: 69851 },
+      { year: 2025, month: 'FEB', monthNo: 2, Expense: 635840, Revenue: 383412, PnL: -252428 },
+      { year: 2025, month: 'MAR', monthNo: 3, Expense: 346305, Revenue: 100926, PnL: -245379 },
+      { year: 2025, month: 'APR', monthNo: 4, Expense: 319650, Revenue: 795340, PnL: 475690 },
+      { year: 2025, month: 'MAY', monthNo: 5, Expense: 629200, Revenue: 364268, PnL: -264932 },
+      { year: 2025, month: 'JUN', monthNo: 6, Expense: 549900, Revenue: 185058, PnL: -364842 },
+      { year: 2025, month: 'JUL', monthNo: 7, Expense: 730550, Revenue: 134190, PnL: -596360 },
+      { year: 2025, month: 'AUG', monthNo: 8, Expense: 552700, Revenue: 402570, PnL: -150130 },
+      { year: 2025, month: 'SEP', monthNo: 9, Expense: 549900, Revenue: 753300, PnL: 203400 },
+      { year: 2025, month: 'OCT', monthNo: 10, Expense: 540300, Revenue: 918000, PnL: 377700 },
+      { year: 2025, month: 'NOV', monthNo: 11, Expense: 321500, Revenue: 436590, PnL: 115090 },
+      { year: 2025, month: 'DEC', monthNo: 12, Expense: 352100, Revenue: 517000, PnL: 164900 },
+      { year: 2026, month: 'JAN', monthNo: 1, Expense: 542200, Revenue: 745200, PnL: 203000 },
+      { year: 2026, month: 'FEB', monthNo: 2, Expense: 383800, Revenue: 800280, PnL: 416480 },
+      { year: 2026, month: 'MAR', monthNo: 3, Expense: 540300, Revenue: 893700, PnL: 353400 },
+      { year: 2026, month: 'APR', monthNo: 4, Expense: 564500, Revenue: 972000, PnL: 407500 },
+    ],
+    revenueRows: [
+      { year: 2025, month: 'JAN', monthNo: 1, 'NET Income ($)': 3344, 'NET Income (pkr)': 892848 },
+      { year: 2025, month: 'FEB', monthNo: 2, 'NET Income ($)': 1436, 'NET Income (pkr)': 383412 },
+      { year: 2025, month: 'APR', monthNo: 4, 'NET Income ($)': 2979, 'NET Income (pkr)': 795393 },
+      { year: 2025, month: 'SEP', monthNo: 9, 'NET Income ($)': 2790, 'NET Income (pkr)': 753300 },
+      { year: 2025, month: 'OCT', monthNo: 10, 'NET Income ($)': 3400, 'NET Income (pkr)': 918000 },
+      { year: 2026, month: 'JAN', monthNo: 1, 'NET Income ($)': 2760, 'NET Income (pkr)': 745200 },
+    ],
+    expenseRows: [
+      { year: 2025, month: 'AUG', monthNo: 8, Expense: 'Office Rent', 'Pay Date': '15 August 2024', Cost: 'Rs40,000', Status: 'Paid', amount: 40000 },
+      { year: 2025, month: 'AUG', monthNo: 8, Expense: 'Instantly', 'Pay Date': '13 August 2024', Cost: 'Rs17,000', Status: 'Paid', amount: 17000 },
+      { year: 2025, month: 'SEP', monthNo: 9, Expense: 'Internet', 'Pay Date': '1 September 2024', Cost: 'Rs6,600', Status: 'Paid', amount: 6600 },
+      { year: 2025, month: 'OCT', monthNo: 10, Expense: 'Bills (Water+KE)', 'Pay Date': '15 October 2024', Cost: 'Rs7,000', Status: 'Paid', amount: 7000 },
+      { year: 2025, month: 'NOV', monthNo: 11, Expense: 'Salaries', 'Pay Date': '30 November 2024', Cost: 'Rs172,000', Status: 'Paid', amount: 172000 },
+    ],
+    salaryRows: [
+      { year: 2025, month: 'OCT', monthNo: 10, Name: 'Ahmed Uddin', Position: 'PM & Email Marketing', 'Pay Date': '15 October 2024', Salary: 'Rs25,000', Commission: '', Bonus: '', Status: 'Paid', amount: 25000 },
+      { year: 2025, month: 'OCT', monthNo: 10, Name: 'Moiz Shaikh', Position: 'Seller', 'Pay Date': '30 October 2024', Salary: 'Rs70,000', Commission: '', Bonus: '', Status: 'Paid', amount: 70000 },
+      { year: 2025, month: 'NOV', monthNo: 11, Name: 'Sherry', Position: 'Upwork Bidder', 'Pay Date': '30 November 2024', Salary: 'Rs17,000', Commission: 'Rs18,000', Bonus: '', Status: 'Paid', amount: 17000 },
+      { year: 2025, month: 'NOV', monthNo: 11, Name: 'Rafay', Position: 'Upwork Bidder', 'Pay Date': '30 November 2024', Salary: 'Rs14,000', Commission: '', Bonus: '', Status: 'Paid', amount: 14000 },
+    ],
+    cashRows: [
+      { year: 2025, month: 'JAN', monthNo: 1, 'Proj. Name': 'Nesi Title', Platform: 'Upwork', Profile: 'shaarif', 'Total Sales': '$250', 'Gross Sales': '$225', Type: 'Front Sale', Agent: 'Sherry', 'Comm Pkr': 'Rs87,042', amount: 87042 },
+      { year: 2025, month: 'FEB', monthNo: 2, 'Proj. Name': 'Senseexperience', Platform: 'Upwork', Profile: 'alishba', 'Total Sales': '$400', 'Gross Sales': '$360', Type: 'Front Sale', Agent: 'Rafay', 'Comm Pkr': 'Rs36,846', amount: 36846 },
+      { year: 2025, month: 'APR', monthNo: 4, 'Proj. Name': 'Anchor M group', Platform: 'Upwork', Profile: 'salam', 'Total Sales': '$1,550', 'Gross Sales': '$1,395', Type: 'Front Sale', Agent: 'Sherry', 'Comm Pkr': 'Rs26,700', amount: 26700 },
+      { year: 2025, month: 'AUG', monthNo: 8, 'Proj. Name': 'Kad3d SEO', Platform: 'Upwork', Profile: 'salam', 'Total Sales': '$850', 'Gross Sales': '$765', Type: 'Up Sale', Agent: 'No One', 'Comm Pkr': 'Rs50,997', amount: 50997 },
+    ],
+  };
 }
 
 function transformData(raw) {
