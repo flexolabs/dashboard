@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FlexoLabs Financial Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <button class="hamburger" id="hamburger" aria-label="Open navigation">☰</button>
+        <div class="brand">
+          <div class="brand-mark">F</div>
+          <div>
+            <p class="eyebrow">Digital Agency Finance</p>
+            <h1>FlexoLabs Dashboard</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <label class="search-box">
+            <span>⌕</span>
+            <input id="globalSearch" type="search" placeholder="Search clients, expenses, team..." />
+          </label>
+          <div class="currency-toggle" role="group" aria-label="Currency toggle">
+            <button class="toggle-btn active" data-currency="usd">USD</button>
+            <button class="toggle-btn" data-currency="pkr">PKR</button>
+          </div>
+          <button class="refresh-btn" id="refreshBtn">Refresh</button>
+        </div>
+      </header>
+
+      <div class="layout">
+        <aside class="sidebar" id="sidebar">
+          <nav>
+            <button class="nav-link active" data-page="overview">Overview</button>
+            <button class="nav-link" data-page="upwork">Upwork ROI</button>
+            <button class="nav-link" data-page="clients">Clients</button>
+            <button class="nav-link" data-page="team">Team</button>
+            <button class="nav-link" data-page="expenses">Expenses</button>
+            <button class="nav-link" data-page="health">Financial Health</button>
+          </nav>
+          <div class="sidebar-card">
+            <p>Exchange Rates</p>
+            <strong>$1 earned = Rs 270</strong>
+            <strong>$1 spent = Rs 300</strong>
+          </div>
+        </aside>
+
+        <main class="main-content">
+          <div id="statusBar" class="status-bar loading">Loading live Google Sheets data...</div>
+          <section id="pageRoot" class="page-root"></section>
+        </main>
+      </div>
+    </div>
+
+    <script src="currency-converter.js"></script>
+    <script src="data-fetcher.js"></script>
+    <script src="chart-utils.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
