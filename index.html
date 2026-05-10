@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flexo Labs Financial Dashboard</title>
+    <meta name="description" content="Live Flexo Labs financial dashboard connected to published Google Sheets." />
+    <link rel="preconnect" href="https://docs.google.com" />
+    <link rel="stylesheet" href="styles.css" />
+    <style id="critical-dashboard-css">
+:root {
+  --bg: #f6f8fb;
+  --panel: #ffffff;
+  --ink: #14213d;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --primary: #9b0000;
+  --primary-2: #c53030;
+  --green: #16803c;
+  --red: #c92a2a;
+  --blue: #246bfe;
+  --shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: radial-gradient(circle at top left, #fff 0, var(--bg) 38rem);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.shell { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
+.sidebar {
+  position: sticky; top: 0; height: 100vh; padding: 28px 22px;
+  background: #fff; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 28px;
+}
+.brand { display: flex; gap: 12px; align-items: center; }
+.brand-mark { width: 48px; height: 48px; border-radius: 16px; display: grid; place-items: center; color: #fff; font-weight: 900; background: linear-gradient(135deg, var(--primary), #ef4444); box-shadow: var(--shadow); }
+.brand p { margin: 0; font-weight: 800; font-size: 18px; }
+.brand span, small, .eyebrow, .lede, .kpi span { color: var(--muted); }
+nav { display: grid; gap: 8px; }
+nav a { color: var(--muted); text-decoration: none; padding: 12px 14px; border-radius: 14px; font-weight: 700; }
+nav a:hover, nav a.active { color: var(--primary); background: #fff1f1; }
+.sync-card { margin-top: auto; border: 1px solid var(--line); border-radius: 18px; padding: 14px; display: flex; gap: 12px; align-items: center; background: #fafafa; }
+.pulse { width: 12px; height: 12px; border-radius: 999px; background: var(--green); box-shadow: 0 0 0 8px rgba(22,128,60,.12); }
+main { padding: 32px; overflow: hidden; }
+.hero { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin-bottom: 18px; }
+h1 { font-size: clamp(32px, 5vw, 58px); line-height: .96; margin: 8px 0 14px; max-width: 780px; letter-spacing: -0.055em; }
+h2 { margin: 2px 0 0; font-size: 20px; letter-spacing: -0.02em; }
+.eyebrow { margin: 0; text-transform: uppercase; letter-spacing: .14em; font-size: 12px; font-weight: 900; }
+.lede { max-width: 660px; font-size: 17px; margin: 0; }
+.toolbar { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; padding: 14px; border: 1px solid var(--line); border-radius: 22px; background: rgba(255,255,255,.78); box-shadow: var(--shadow); }
+label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+select, button { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 12px; padding: 10px 12px; font-weight: 800; }
+button { cursor: pointer; background: var(--primary); color: #fff; border-color: var(--primary); }
+.status { display: none; margin: 16px 0; padding: 14px 16px; border-radius: 16px; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; }
+.status.show { display: block; }
+.kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 16px; margin: 24px 0; }
+.kpi, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow); }
+.kpi { padding: 20px; display: grid; gap: 8px; }
+.kpi strong { font-size: clamp(26px, 3vw, 38px); letter-spacing: -0.04em; }
+.kpi.positive strong { color: var(--green); } .kpi.negative strong { color: var(--red); }
+.grid { display: grid; gap: 16px; margin-bottom: 16px; }
+.grid.two { grid-template-columns: minmax(0,1.15fr) minmax(0,.85fr); }
+.panel { padding: 20px; min-width: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
+.panel-head span { color: var(--muted); font-weight: 800; }
+.chart { min-height: 310px; display: flex; align-items: end; gap: 12px; border-bottom: 1px solid var(--line); padding-top: 16px; overflow-x: auto; }
+.bar-group { min-width: 66px; flex: 1; height: 250px; display: flex; align-items: end; gap: 5px; position: relative; padding-bottom: 26px; }
+.bar { width: 100%; min-height: 2px; border-radius: 9px 9px 0 0; background: var(--blue); position: relative; }
+.bar.expense { background: #f59e0b; } .bar.profit { background: var(--green); } .bar.loss { background: var(--red); }
+.bar-label { position: absolute; bottom: 0; left: 0; right: 0; font-size: 11px; color: var(--muted); text-align: center; white-space: nowrap; }
+.rank-list { display: grid; gap: 12px; }
+.rank-item { display: grid; gap: 8px; }
+.rank-row { display: flex; justify-content: space-between; gap: 12px; font-weight: 800; }
+.track { height: 10px; border-radius: 999px; background: #edf2f7; overflow: hidden; }
+.fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--primary), #fb7185); }
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.tab { background: #fff; color: var(--muted); border-color: var(--line); }
+.tab.active { color: #fff; background: var(--primary); border-color: var(--primary); }
+.table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 16px; }
+table { width: 100%; border-collapse: collapse; min-width: 760px; }
+th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--line); font-size: 14px; }
+th { background: #f8fafc; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-size: 12px; }
+tr:last-child td { border-bottom: 0; }
+@media (max-width: 1050px) { .shell { grid-template-columns: 1fr; } .sidebar { position: relative; height: auto; } nav { grid-template-columns: repeat(3,1fr); } .kpi-grid, .grid.two { grid-template-columns: 1fr 1fr; } .hero { flex-direction: column; } }
+@media (max-width: 680px) { main, .sidebar { padding: 18px; } nav, .kpi-grid, .grid.two { grid-template-columns: 1fr; } .chart { min-height: 260px; } }
+
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar" aria-label="Dashboard navigation">
+        <div class="brand">
+          <div class="brand-mark">FL</div>
+          <div>
+            <p>Flexo Labs</p>
+            <span>Financial Dashboard</span>
+          </div>
+        </div>
+        <nav>
+          <a href="#overview" class="active">Overview</a>
+          <a href="#pnl">Company PnL</a>
+          <a href="#revenue">Revenue</a>
+          <a href="#expenses">Expenses</a>
+          <a href="#team">Team Payouts</a>
+          <a href="#cashin">Cash In</a>
+        </nav>
+        <div class="sync-card">
+          <span class="pulse"></span>
+          <div>
+            <strong>Live Sheets</strong>
+            <small id="lastUpdated">Syncing…</small>
+          </div>
+        </div>
+      </aside>
+
+      <main>
+        <header class="hero" id="overview">
+          <div>
+            <p class="eyebrow">Light theme · Google Sheets live</p>
+            <h1>Flexo Labs revenue, expenses & profit dashboard</h1>
+            <p class="lede">Data auto-loads from your published Google Sheet tabs and refreshes every 10 minutes.</p>
+          </div>
+          <div class="toolbar">
+            <label>
+              Year
+              <select id="yearFilter"><option value="all">All years</option></select>
+            </label>
+            <label>
+              Month
+              <select id="monthFilter"><option value="all">All months</option></select>
+            </label>
+            <button id="refreshBtn" type="button">Refresh</button>
+          </div>
+        </header>
+
+        <section class="status" id="statusMessage" role="status">Loading published Google Sheets…</section>
+
+        <section class="kpi-grid" aria-label="Key metrics">
+          <article class="kpi"><span>Total Revenue</span><strong id="kpiRevenue">—</strong><small id="kpiRevenueSub">PKR</small></article>
+          <article class="kpi"><span>Total Expenses</span><strong id="kpiExpenses">—</strong><small>PKR</small></article>
+          <article class="kpi"><span>Net Profit / Loss</span><strong id="kpiProfit">—</strong><small id="kpiProfitSub">Selected period</small></article>
+          <article class="kpi"><span>Cash In</span><strong id="kpiCash">—</strong><small>PKR from commissions</small></article>
+        </section>
+
+        <section class="grid two" id="pnl">
+          <article class="panel chart-panel">
+            <div class="panel-head"><div><p class="eyebrow">Company PnL</p><h2>Revenue vs Expenses</h2></div><span id="pnlCount">—</span></div>
+            <div class="chart" id="pnlChart"></div>
+          </article>
+          <article class="panel chart-panel">
+            <div class="panel-head"><div><p class="eyebrow">Profitability</p><h2>Monthly PnL Trend</h2></div></div>
+            <div class="chart" id="profitChart"></div>
+          </article>
+        </section>
+
+        <section class="grid two" id="revenue">
+          <article class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Revenue</p><h2>Net income by month</h2></div></div>
+            <div class="chart" id="revenueChart"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Project cash in</p><h2>Top profiles / platforms</h2></div></div>
+            <div id="profileList" class="rank-list"></div>
+          </article>
+        </section>
+
+        <section class="grid two" id="expenses">
+          <article class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Expenses</p><h2>Expense categories</h2></div></div>
+            <div id="expenseList" class="rank-list"></div>
+          </article>
+          <article class="panel" id="team">
+            <div class="panel-head"><div><p class="eyebrow">Salaries</p><h2>Team payouts</h2></div></div>
+            <div id="salaryList" class="rank-list"></div>
+          </article>
+        </section>
+
+        <section class="panel table-panel" id="cashin">
+          <div class="panel-head"><div><p class="eyebrow">Details</p><h2>Latest monthly records</h2></div></div>
+          <div class="tabs" role="tablist">
+            <button class="tab active" data-table="pnlRows">PnL</button>
+            <button class="tab" data-table="revenueRows">Revenue</button>
+            <button class="tab" data-table="expenseRows">Expenses</button>
+            <button class="tab" data-table="salaryRows">Salaries</button>
+            <button class="tab" data-table="cashRows">Cash In</button>
+          </div>
+          <div class="table-wrap"><table id="detailsTable"></table></div>
+        </section>
+      </main>
+    </div>
+    <script src="app.js" defer></script>
+  </body>
+</html>
